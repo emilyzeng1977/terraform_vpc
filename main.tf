@@ -21,6 +21,7 @@ resource "aws_vpc" "main" {
 resource "aws_subnet" "main" {
   vpc_id     = aws_vpc.main.id
   cidr_block = "10.0.1.0/24"
+  map_public_ip_on_launch = true
   tags = var.tag_name
 }
 resource "aws_subnet" "private" {
@@ -48,26 +49,10 @@ resource "aws_eip" "nat" {
   vpc      = true
   tags = var.tag_name
 }
-resource "aws_nat_gateway" "default" {
-  allocation_id = "${aws_eip.nat.id}"
-  subnet_id = "${aws_subnet.main.id}"
-  tags = var.tag_name
-}
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-  route {
-        cidr_block = "0.0.0.0/0"
-        nat_gateway_id = aws_nat_gateway.default.id
-  }
-  tags = var.tag_name
-}
-resource "aws_route_table_association" "private" {
-    subnet_id = aws_subnet.private.id
-    route_table_id = aws_route_table.private.id
-}
+
 resource "aws_security_group" "ecs_sg" {
     vpc_id      = aws_vpc.main.id
-
+    tags = var.tag_name
     ingress {
         from_port       = 22
         to_port         = 22
@@ -84,18 +69,61 @@ resource "aws_security_group" "ecs_sg" {
 
     egress {
         from_port       = 0
-        to_port         = 65535
-        protocol        = "tcp"
+        to_port         = 0
+        protocol        = "-1"
         cidr_blocks     = ["0.0.0.0/0"]
     }
 }
 
-resource "aws_instance" "container" {
-  ami           = "ami-020d764f9372da231"
-  instance_type = "t2.micro"
-  key_name = "emily_keypairs"
-  subnet_id = aws_subnet.main.id
-  tags = var.tag_name
+
+resource "aws_ecs_cluster" "my_cluster" {
+  name = "my_cluster_zyc"
+}
+resource "aws_ecs_task_definition" "my_first_task" {
+  family                   = "my-first-task" # Naming our first task
+  container_definitions    = <<DEFINITION
+  [
+    {
+      "name": "my-first-task",
+      "image": "004468876800.dkr.ecr.ap-southeast-2.amazonaws.com/nginx:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000
+        }
+      ],
+      "memory": 512,
+      "cpu": 256
+    }
+  ]
+  DEFINITION
+  requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
+  network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
+  memory                   = 512         # Specifying the memory our container requires
+  cpu                      = 256         # Specifying the CPU our container requires
+  execution_role_arn       = "${aws_iam_role.ecsTaskExecutionRole.arn}"
+}
+
+resource "aws_iam_role" "ecsTaskExecutionRole" {
+  name               = "ecsTaskExecutionRole"
+  assume_role_policy = "${data.aws_iam_policy_document.assume_role_policy.json}"
+}
+
+data "aws_iam_policy_document" "assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecsTaskExecutionRole_policy" {
+  role       = "${aws_iam_role.ecsTaskExecutionRole.name}"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 output "vpc_id" {
   value = aws_vpc.main.id
