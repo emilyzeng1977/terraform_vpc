@@ -1,6 +1,6 @@
 provider "aws" {
-  profile       = "default"
-  region = "ap-southeast-2"
+  profile = "default"
+  region  = "ap-southeast-2"
 }
 variable "vpc_cidr_block" {
   default = "10.0.0.0/16"
@@ -14,65 +14,81 @@ variable "tag_name" {
   }
 }
 resource "aws_vpc" "main" {
-  cidr_block       = var.vpc_cidr_block
+  cidr_block = var.vpc_cidr_block
   #instance_tenancy = "dedicated"
   tags = var.tag_name
 }
+
 resource "aws_subnet" "main" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.1.0/24"
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
-  tags = var.tag_name
+  tags                    = var.tag_name
 }
+
+resource "aws_subnet" "main1" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.3.0/24"
+  map_public_ip_on_launch = true
+  tags                    = var.tag_name
+}
+
 resource "aws_subnet" "private" {
   vpc_id     = aws_vpc.main.id
   cidr_block = "10.0.2.0/24"
-  tags = var.tag_name
+  tags       = var.tag_name
 }
 resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
-  tags = var.tag_name
+  tags   = var.tag_name
 }
 resource "aws_route_table" "r" {
   vpc_id = aws_vpc.main.id
-  tags = var.tag_name
+  tags   = var.tag_name
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.gw.id
   }
 }
 resource "aws_route_table_association" "custom" {
-  subnet_id = aws_subnet.main.id
+  subnet_id      = aws_subnet.main.id
   route_table_id = aws_route_table.r.id
 }
 resource "aws_eip" "nat" {
-  vpc      = true
+  vpc  = true
   tags = var.tag_name
 }
 
 resource "aws_security_group" "ecs_sg" {
-    vpc_id      = aws_vpc.main.id
-    tags = var.tag_name
-    ingress {
-        from_port       = 22
-        to_port         = 22
-        protocol        = "tcp"
-        cidr_blocks     = ["0.0.0.0/0"]
-    }
+  vpc_id = aws_vpc.main.id
+  tags   = var.tag_name
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-    ingress {
-        from_port       = 443
-        to_port         = 443
-        protocol        = "tcp"
-        cidr_blocks     = ["0.0.0.0/0"]
-    }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-    egress {
-        from_port       = 0
-        to_port         = 0
-        protocol        = "-1"
-        cidr_blocks     = ["0.0.0.0/0"]
-    }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 
@@ -89,8 +105,7 @@ resource "aws_ecs_task_definition" "my_first_task" {
       "essential": true,
       "portMappings": [
         {
-          "containerPort": 3000,
-          "hostPort": 3000
+          "containerPort": 80
         }
       ],
       "memory": 512,
@@ -121,19 +136,51 @@ data "aws_iam_policy_document" "assume_role_policy" {
   }
 }
 
+resource "aws_alb" "main" {
+  name            = "main-alb"
+  subnets         = [aws_subnet.main.id]
+  security_groups = [aws_security_group.ecs_sg.id]
+}
+
+resource "aws_alb_listener" "nginx" {
+  load_balancer_arn = aws_alb.main.id
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    target_group_arn = aws_lb_target_group.main.id
+    type             = "forward"
+  }
+}
+
+resource "aws_lb_target_group" "main" {
+  name        = "tf-nginx"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.main.id
+}
+
 resource "aws_iam_role_policy_attachment" "ecsTaskExecutionRole_policy" {
   role       = aws_iam_role.ecsTaskExecutionRole.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
+
 resource "aws_ecs_service" "my_first_service" {
-  name            = "my-first-service"                             # Naming our first service
+  name            = "my-first-service"                        # Naming our first service
   cluster         = aws_ecs_cluster.my_cluster.id             # Referencing our created Cluster
   task_definition = aws_ecs_task_definition.my_first_task.arn # Referencing the task our service will spin up
   launch_type     = "FARGATE"
   desired_count   = 3 # Setting the number of containers we want deployed to 3
   network_configuration {
-    assign_public_ip = true
+    assign_public_ip = false
     subnets          = [aws_subnet.main.id]
+    security_groups  = [aws_security_group.ecs_sg.id]
+  }
+  load_balancer {
+    container_name   = "my-first-task"
+    container_port   = 80
+    target_group_arn = aws_lb_target_group.main.arn
   }
 }
 output "vpc_id" {
