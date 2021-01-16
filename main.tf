@@ -54,10 +54,10 @@ resource "aws_route_table_association" "custom" {
   route_table_id = aws_route_table.r.id
 }
 
-resource "aws_eip" "nat" {
-  vpc  = true
-  tags = var.tag_name
-}
+#resource "aws_eip" "nat" {
+#  vpc  = true
+#  tags = var.tag_name
+#}
 
 resource "aws_security_group" "ec2_sg" {
   vpc_id = aws_vpc.main.id
@@ -91,7 +91,16 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-resource "aws_instance" "ec2_public" {
+resource "aws_instance" "ec2_public_1" {
+  ami           = "ami-020d764f9372da231"
+  instance_type = "t2.micro"
+  security_groups = [aws_security_group.ec2_sg.id]
+  key_name      = "emily_keypairs"
+  subnet_id     = aws_subnet.main.id
+  tags          = var.tag_name
+}
+
+resource "aws_instance" "ec2_public_2" {
   ami           = "ami-020d764f9372da231"
   instance_type = "t2.micro"
   security_groups = [aws_security_group.ec2_sg.id]
