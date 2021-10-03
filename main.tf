@@ -13,6 +13,16 @@ variable "tag_name" {
     Name = "tf_tom"
   }
 }
+
+variable "private_tag_name" {
+  type = object({
+    Name = string
+  })
+  default = {
+    Name = "tf_tom_private"
+  }
+}
+
 resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr_block
   tags = var.tag_name
@@ -23,6 +33,12 @@ resource "aws_subnet" "public_subnet" {
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
   tags                    = var.tag_name
+}
+
+resource "aws_subnet" "private_subnet" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  tags                    = var.private_tag_name
 }
 
 resource "aws_internet_gateway" "gw" {
@@ -60,13 +76,29 @@ resource "aws_security_group" "sg" {
   }
 }
 
+resource "aws_iam_instance_profile" "admin_profile" {
+    name = "web_instance_profile"
+    role = "admin_iam_role"
+}
+
 resource "aws_instance" "ec2_public" {
   ami           = "ami-020d764f9372da231"
   instance_type = "t2.micro"
   security_groups = [aws_security_group.sg.id]
   key_name      = "key_tom23"
   subnet_id     = aws_subnet.public_subnet.id
+  iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
   tags          = var.tag_name
+}
+
+resource "aws_instance" "ec2_private" {
+  ami           = "ami-020d764f9372da231"
+  instance_type = "t2.micro"
+  security_groups = [aws_security_group.sg.id]
+  key_name      = "key_tom23"
+  subnet_id     = aws_subnet.private_subnet.id
+  iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
+  tags          = var.private_tag_name
 }
 
 output "vpc_id" {
