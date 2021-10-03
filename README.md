@@ -8,7 +8,7 @@ How to draw diagrams
 - https://diagrams.mingrammer.com/docs/getting-started/examples
 - https://medium.com/analytics-vidhya/terraform-diagrams-provisioning-and-visualizing-a-simple-environment-on-aws-471f5d88c95d
 
-main_public.tf
+1-pub-sub.tf
 - One public subnet
 - No NACL
 
