@@ -85,7 +85,7 @@ resource "aws_instance" "ec2_public" {
   ami           = "ami-020d764f9372da231"
   instance_type = "t2.micro"
   security_groups = [aws_security_group.sg.id]
-  key_name      = "key_tom23"
+  key_name      = "key_tom25"
   subnet_id     = aws_subnet.public_subnet.id
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
   tags          = var.tag_name
